@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- New `tasktone doctor` command for automatic environment and integration diagnostics.
+- `tasktone doctor --test-notify` to emit a real diagnostic notification.
+
+### Changed
+- README rewritten in English with clearer pain points, beginner-friendly setup, and debugging guide.
+
 ## [0.1.1] - 2026-03-26
 
 ### Added

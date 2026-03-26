@@ -1,118 +1,154 @@
 # TaskTone
 
-TaskTone 是一个开源 CLI：给 AI 编码代理加上轻量通知层。  
-核心目标是让你不用盯着终端，也能在关键任务节点及时收到提醒。
+TaskTone is a lightweight notification layer for AI coding agents.
 
-核心价值：**Your AI tells you when it needs you.**
+Core value: **Your AI tells you when it needs you.**
 
-## 功能（MVP）
+## Why this exists
 
-- 统一事件模型：
+If you use agentic coding tools, you already know the pain:
+
+- You must keep watching the terminal to catch completion/errors.
+- You miss "needs your input" moments while multitasking.
+- Different tools emit different lifecycle signals.
+
+TaskTone solves this with one tiny CLI layer that maps tool-specific signals
+into a unified event model and plays sound/desktop notifications.
+
+## What TaskTone does
+
+- Unified events:
   - `attention_required`
   - `task_completed`
   - `task_failed`
-- 通知能力：
-  - 声音通知（必选，macOS `afplay`）
-  - 桌面通知（可选，`osascript`）
-  - 事件防抖（默认 3000ms）
-- 适配器：
-  - Claude Code（官方 hooks）
-  - Codex（优先 `notify`，回退 wrapper）
+- Notification channels:
+  - Sound (`afplay`) required on macOS
+  - Desktop notification (`osascript`) optional
+  - Debounce to avoid notification spam
+- Tool adapters (MVP):
+  - Claude Code hooks
+  - Codex notify hook (best-effort) + wrapper fallback
 
-## 安装
+## Install (Beginner Friendly)
+
+### Prerequisites
+
+- macOS (MVP target)
+- Node.js + npm installed
+
+### 1) Global install
 
 ```bash
 npm install -g tasktone
 ```
 
-如果你在本地开发：
+### 2) Verify command works
 
 ```bash
-npm link
+tasktone --help
 ```
 
-## 快速开始
+If command is not found, restart your terminal and try again.
 
-### 1) 初始化
+## 3-minute setup
+
+### 1) Initialize TaskTone
 
 ```bash
 tasktone init
 ```
 
-会生成：
+This creates:
 
 - `~/.tasktone/config.json`
 - `~/.tasktone/hooks/`
 - `~/.tasktone/sounds/`
 
-默认配置示例见 [example.config.json](./example.config.json)。
-
-### 2) 安装 Claude 集成
+### 2) Connect Claude Code
 
 ```bash
 tasktone install claude
 ```
 
-该命令会：
+This writes hook scripts and updates `~/.claude/settings.json`.
 
-1. 在 `~/.tasktone/hooks/` 创建 hook 脚本
-2. 修改 `~/.claude/settings.json`
-3. 注册 hooks 映射：
-   - `Notification` -> `tasktone notify --event attention_required`
-   - `Stop` -> `tasktone notify --event task_completed`
-   - `StopFailure` -> `tasktone notify --event task_failed`
-
-### 3) 安装 Codex 集成
+### 3) Connect Codex
 
 ```bash
 tasktone install codex
 ```
 
-该命令会尝试配置 `~/.codex/config.toml` 的 `notify` 钩子，指向 TaskTone hook 脚本。
-
-如果你的 Codex 版本没有稳定触发 notify，使用 wrapper 模式：
+This tries to configure `notify` in `~/.codex/config.toml`.
+If notify is not stable in your Codex build, use wrapper mode:
 
 ```bash
 tasktone run codex ...
 ```
 
-`tasktone run codex` 会透传 stdout/stderr，并在进程退出时触发：
+## Daily usage
 
-- `exit code 0` -> `task_completed`
-- `non-zero` -> `task_failed`
+After setup, keep using Claude/Codex normally.
+TaskTone runs through installed hooks in the background.
 
-## 常用命令
+You can also trigger notifications manually:
 
 ```bash
-# 初始化
-tasktone init
-
-# 安装集成
-tasktone install claude
-tasktone install codex
-
-# Wrapper 模式
-tasktone run codex ...
-
-# 手动触发
 tasktone notify --event task_completed
+```
 
-# 通知测试
+## Command reference
+
+```bash
+tasktone init
+tasktone install claude
+tasktone install codex
+tasktone run codex ...
+tasktone notify --event <attention_required|task_completed|task_failed>
+tasktone doctor
+tasktone doctor --test-notify
 tasktone test
-
-# 状态检查
 tasktone status
 ```
 
-发布前检查：
+## Debugging and troubleshooting
+
+TaskTone includes a built-in doctor command:
 
 ```bash
-npm run release:check
+tasktone doctor
 ```
 
-## 配置文件
+This checks:
 
-路径：`~/.tasktone/config.json`
+- config presence + JSON validity
+- sound/desktop notifier dependencies
+- hook files and executable permissions
+- Codex and Claude integration wiring
+- PATH visibility for `tasktone`/`codex`
+
+To send a real diagnostic notification during doctor:
+
+```bash
+tasktone doctor --test-notify
+```
+
+### Common issues
+
+1. No sound:
+   - Run `tasktone doctor`
+   - Ensure `afplay` exists and system output volume is not muted
+   - Use absolute system sounds in config for stronger signals
+2. Codex finished but no alert:
+   - Confirm `notify` exists in `~/.codex/config.toml`
+   - Re-run `tasktone install codex`
+   - If notify is not emitted by your build, use `tasktone run codex ...`
+3. Claude hooks not firing:
+   - Re-run `tasktone install claude`
+   - Check `~/.claude/settings.json` hooks block
+
+## Configuration
+
+Path: `~/.tasktone/config.json`
 
 ```json
 {
@@ -126,44 +162,43 @@ npm run release:check
 }
 ```
 
-说明：
+Notes:
 
-- 相对路径会相对于 `~/.tasktone/` 解析
-- 如果配置的声音文件不存在，TaskTone 会回退到 macOS 系统声音
+- Relative paths are resolved from `~/.tasktone/`
+- Missing custom sound files automatically fallback to macOS system sounds
 
-## 架构
+## Architecture
 
 ```text
 src/
   core/
-    event-bus.js      # 统一事件总线
-    config.js         # 配置加载与初始化
-    notifier.js       # 声音/桌面通知 + 防抖
-    runtime.js        # core 组装
+    event-bus.js
+    config.js
+    notifier.js
+    runtime.js
   adapters/
     claude/
-      index.js        # Claude 信号 -> 统一事件
+      index.js
     codex/
-      index.js        # Codex 信号 -> 统一事件
+      index.js
 ```
 
-设计原则：**core 不掺杂工具特定逻辑，工具差异都放在 adapter。**  
-这样未来可扩展 OpenCode、Cursor 等其它 agent CLI。
+Design rule: core stays tool-agnostic, tool-specific logic lives in adapters.
 
-## 限制（MVP）
+## Limitations (MVP)
 
-- macOS 优先（通知依赖 `afplay` 与 `osascript`）
-- 无 GUI
-- 无云服务
-- 无数据库
-- Codex `attention_required` 目前是 best-effort（受上游 notify 能力影响）
+- macOS-first
+- No GUI
+- No cloud services
+- No database
+- Codex `attention_required` is best-effort depending on upstream notify events
 
-## CI 与发布
+## CI and release
 
-- CI：GitHub Actions 会自动运行 `npm test` 冒烟检查
-- 发布流程：见 [RELEASING.md](./RELEASING.md)
-- 变更记录：见 [CHANGELOG.md](./CHANGELOG.md)
+- CI runs smoke tests on GitHub Actions
+- Release guide: [RELEASING.md](./RELEASING.md)
+- Changelog: [CHANGELOG.md](./CHANGELOG.md)
 
-## 许可证
+## License
 
 MIT

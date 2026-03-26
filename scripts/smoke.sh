@@ -53,6 +53,7 @@ EOF
 
 run install claude
 run install codex
+run doctor >/dev/null
 
 grep -q '"Notification"' "$HOME/.claude/settings.json"
 grep -q '"Stop"' "$HOME/.claude/settings.json"

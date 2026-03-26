@@ -1,8 +1,10 @@
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
-const { spawn } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 const {
   getConfigPath,
+  getTaskToneDir,
   initializeConfig,
   loadConfig,
   ensureTaskToneDirectories
@@ -41,6 +43,7 @@ Usage:
   tasktone install codex
   tasktone run codex [args...]
   tasktone notify --event <attention_required|task_completed|task_failed>
+  tasktone doctor [--test-notify]
   tasktone test
   tasktone status
 `);
@@ -322,6 +325,302 @@ async function commandStatus() {
   );
 }
 
+function commandExists(commandName) {
+  const result = spawnSync("which", [commandName], { encoding: "utf8" });
+  if (result.status === 0) {
+    return result.stdout.trim();
+  }
+  return null;
+}
+
+function isExecutableFile(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    return stat.isFile() && (stat.mode & 0o111) !== 0;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function resolveSoundAbsolute(configPath, soundPath) {
+  return path.isAbsolute(soundPath)
+    ? soundPath
+    : path.resolve(path.dirname(configPath), soundPath);
+}
+
+function printDoctorCheck(status, title, detail, fix) {
+  const marker = {
+    pass: "[PASS]",
+    warn: "[WARN]",
+    fail: "[FAIL]"
+  }[status];
+
+  console.log(`${marker} ${title}`);
+  if (detail) {
+    console.log(`  - ${detail}`);
+  }
+  if (fix) {
+    console.log(`  - Fix: ${fix}`);
+  }
+}
+
+async function commandDoctor(args) {
+  const testNotify = args.includes("--test-notify");
+  const checks = [];
+  const homeDir = HOME_DIR;
+  const tasktoneDir = getTaskToneDir(homeDir);
+  const configPath = getConfigPath(homeDir);
+  const hookDir = path.join(tasktoneDir, "hooks");
+  const codexHookPath = path.join(hookDir, "codex-notify.sh");
+  const claudeHookPath = path.join(hookDir, "claude-stop.sh");
+  const codexConfigPath = getCodexConfigPath(homeDir);
+  const claudeSettingsPath = getClaudeSettingsPath(homeDir);
+
+  function add(status, title, detail, fix) {
+    checks.push({ status, title, detail, fix });
+  }
+
+  if (os.platform() === "darwin") {
+    add("pass", "Operating system", "macOS detected");
+  } else {
+    add(
+      "warn",
+      "Operating system",
+      `Current platform is ${os.platform()} (TaskTone MVP is macOS-first)`,
+      "Use macOS for full sound + desktop notification support."
+    );
+  }
+
+  if (fs.existsSync(configPath)) {
+    add("pass", "TaskTone config", `Found ${configPath}`);
+  } else {
+    add(
+      "warn",
+      "TaskTone config",
+      `Missing ${configPath}`,
+      "Run: tasktone init"
+    );
+  }
+
+  let config;
+  try {
+    config = loadConfig(homeDir).config;
+    add("pass", "Config JSON parsing", "config.json is readable and valid");
+  } catch (error) {
+    add(
+      "fail",
+      "Config JSON parsing",
+      String(error.message || error),
+      "Fix ~/.tasktone/config.json JSON syntax, then rerun tasktone doctor."
+    );
+  }
+
+  if (fs.existsSync(hookDir)) {
+    add("pass", "Hook directory", `Found ${hookDir}`);
+  } else {
+    add("warn", "Hook directory", `Missing ${hookDir}`, "Run: tasktone init");
+  }
+
+  const tasktoneBinary = commandExists("tasktone");
+  if (tasktoneBinary) {
+    add("pass", "TaskTone CLI in PATH", tasktoneBinary);
+  } else {
+    add(
+      "warn",
+      "TaskTone CLI in PATH",
+      "tasktone command not found in current shell PATH",
+      "Run: npm install -g tasktone (or use node /path/to/bin/tasktone.js)"
+    );
+  }
+
+  const afplayPath = commandExists("afplay");
+  if (afplayPath) {
+    add("pass", "afplay availability", afplayPath);
+  } else if (os.platform() === "darwin") {
+    add(
+      "fail",
+      "afplay availability",
+      "afplay not found; sound playback will fail",
+      "Ensure /usr/bin/afplay exists and macOS audio tools are intact."
+    );
+  } else {
+    add("warn", "afplay availability", "afplay not found (non-macOS expected)");
+  }
+
+  if (config && config.desktopNotification) {
+    const osascriptPath = commandExists("osascript");
+    if (osascriptPath) {
+      add("pass", "Desktop notification binary", osascriptPath);
+    } else if (os.platform() === "darwin") {
+      add(
+        "fail",
+        "Desktop notification binary",
+        "osascript not found while desktopNotification=true",
+        "Set desktopNotification=false in config, or restore osascript."
+      );
+    } else {
+      add(
+        "warn",
+        "Desktop notification binary",
+        "osascript not found (desktop notifications disabled on this platform)"
+      );
+    }
+  }
+
+  if (config) {
+    for (const eventName of ["attention_required", "task_completed", "task_failed"]) {
+      const configured = config.sound[eventName];
+      const absolute = resolveSoundAbsolute(configPath, configured);
+      if (fs.existsSync(absolute)) {
+        add("pass", `Sound file (${eventName})`, absolute);
+      } else {
+        add(
+          "warn",
+          `Sound file (${eventName})`,
+          `Configured path not found: ${absolute}`,
+          "TaskTone will fallback to macOS system sounds."
+        );
+      }
+    }
+  }
+
+  if (fs.existsSync(codexConfigPath)) {
+    add("pass", "Codex config", `Found ${codexConfigPath}`);
+    const codexConfigRaw = fs.readFileSync(codexConfigPath, "utf8");
+    if (/^\s*notify\s*=.*/m.test(codexConfigRaw)) {
+      add("pass", "Codex notify setting", "notify is configured");
+    } else {
+      add(
+        "warn",
+        "Codex notify setting",
+        "notify is missing in ~/.codex/config.toml",
+        "Run: tasktone install codex"
+      );
+    }
+  } else {
+    add(
+      "warn",
+      "Codex config",
+      `Missing ${codexConfigPath}`,
+      "Run: tasktone install codex"
+    );
+  }
+
+  if (isExecutableFile(codexHookPath)) {
+    add("pass", "Codex hook script", codexHookPath);
+  } else {
+    add(
+      "warn",
+      "Codex hook script",
+      `Missing or non-executable: ${codexHookPath}`,
+      "Run: tasktone install codex"
+    );
+  }
+
+  const codexBinary = commandExists("codex");
+  if (codexBinary) {
+    add("pass", "Codex binary in PATH", codexBinary);
+  } else {
+    add(
+      "warn",
+      "Codex binary in PATH",
+      "codex command not found",
+      "For wrapper mode, ensure codex is in PATH or use full binary path."
+    );
+  }
+
+  if (fs.existsSync(claudeSettingsPath)) {
+    add("pass", "Claude settings", `Found ${claudeSettingsPath}`);
+    try {
+      const parsed = JSON.parse(fs.readFileSync(claudeSettingsPath, "utf8") || "{}");
+      const hooks = parsed.hooks || {};
+      const hasNotification =
+        Array.isArray(hooks.Notification) && hooks.Notification.length > 0;
+      const hasStop = Array.isArray(hooks.Stop) && hooks.Stop.length > 0;
+      if (hasNotification && hasStop) {
+        add("pass", "Claude hook mapping", "Notification + Stop hooks are configured");
+      } else {
+        add(
+          "warn",
+          "Claude hook mapping",
+          "Notification/Stop hooks are incomplete",
+          "Run: tasktone install claude"
+        );
+      }
+    } catch (error) {
+      add(
+        "fail",
+        "Claude settings JSON parsing",
+        String(error.message || error),
+        "Fix ~/.claude/settings.json JSON syntax, then rerun tasktone doctor."
+      );
+    }
+  } else {
+    add(
+      "warn",
+      "Claude settings",
+      `Missing ${claudeSettingsPath}`,
+      "Run: tasktone install claude"
+    );
+  }
+
+  if (isExecutableFile(claudeHookPath)) {
+    add("pass", "Claude hook script", claudeHookPath);
+  } else {
+    add(
+      "warn",
+      "Claude hook script",
+      `Missing or non-executable: ${claudeHookPath}`,
+      "Run: tasktone install claude"
+    );
+  }
+
+  if (testNotify) {
+    try {
+      const runtime = createRuntime({ homeDir });
+      runtime.emit("attention_required", {
+        title: "TaskTone doctor",
+        message: "This is a doctor test notification."
+      });
+      add("pass", "Doctor notification probe", "Sent attention_required test event");
+    } catch (error) {
+      add(
+        "fail",
+        "Doctor notification probe",
+        String(error.message || error),
+        "Run: tasktone notify --event attention_required to inspect runtime errors."
+      );
+    }
+  }
+
+  console.log("TaskTone Doctor");
+  console.log(`- Home: ${homeDir}`);
+  console.log(`- Config: ${configPath}`);
+  console.log("");
+
+  for (const check of checks) {
+    printDoctorCheck(check.status, check.title, check.detail, check.fix);
+  }
+
+  const failCount = checks.filter((item) => item.status === "fail").length;
+  const warnCount = checks.filter((item) => item.status === "warn").length;
+  const passCount = checks.filter((item) => item.status === "pass").length;
+
+  console.log("");
+  console.log(
+    `Summary: ${passCount} passed, ${warnCount} warnings, ${failCount} failures`
+  );
+
+  if (failCount > 0) {
+    process.exitCode = 1;
+    console.log("Result: issues found. Fix [FAIL] items first.");
+  } else if (warnCount > 0) {
+    console.log("Result: usable, but review [WARN] items for better reliability.");
+  } else {
+    console.log("Result: healthy.");
+  }
+}
+
 async function runCli(argv) {
   const args = argv.slice(2);
   const command = args[0];
@@ -353,6 +652,11 @@ async function runCli(argv) {
 
   if (command === "test") {
     await commandTest();
+    return;
+  }
+
+  if (command === "doctor") {
+    await commandDoctor(args.slice(1));
     return;
   }
 
