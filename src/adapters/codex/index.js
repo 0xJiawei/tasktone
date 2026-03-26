@@ -2,8 +2,8 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 const { ensureTaskToneDirectories } = require("../../core/config");
-const { shellQuote } = require("../../utils/shell");
 const { updateTopLevelNotifyToml } = require("../../utils/toml-edit");
+const { buildTasktoneNotifyScript } = require("../../utils/hook-command");
 
 function getCodexConfigPath(homeDir) {
   return path.join(homeDir, ".codex", "config.toml");
@@ -41,15 +41,15 @@ function codexSupportsNotify(homeDir) {
 }
 
 function createCodexNotifyScript(scriptPath, tasktoneInvocation) {
+  const commandArgs = 'notify --adapter codex --raw-json "$JSON_PAYLOAD"';
   const content = [
     "#!/usr/bin/env bash",
     "set -euo pipefail",
     "",
-    'JSON_PAYLOAD="${1:-}"',
-    `${shellQuote(tasktoneInvocation.nodePath)} ${shellQuote(
-      tasktoneInvocation.entryPath
-    )} notify --adapter codex --raw-json "$JSON_PAYLOAD" >/dev/null 2>&1 || true`
-  ].join("\n");
+    'JSON_PAYLOAD="${1:-}"'
+  ]
+    .concat(buildTasktoneNotifyScript(tasktoneInvocation, commandArgs))
+    .join("\n");
 
   fs.writeFileSync(scriptPath, `${content}\n`, { mode: 0o755 });
   fs.chmodSync(scriptPath, 0o755);

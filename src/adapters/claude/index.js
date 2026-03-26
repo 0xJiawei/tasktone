@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { ensureTaskToneDirectories } = require("../../core/config");
-const { shellQuote } = require("../../utils/shell");
+const { buildTasktoneNotifyScript } = require("../../utils/hook-command");
 
 const CLAUDE_EVENT_TO_UNIFIED_EVENT = {
   Notification: "attention_required",
@@ -83,22 +83,10 @@ function ensureHook(settings, eventName, commandPath) {
 }
 
 function createHookScript(scriptPath, tasktoneInvocation, eventName) {
-  const command = [
-    shellQuote(tasktoneInvocation.nodePath),
-    shellQuote(tasktoneInvocation.entryPath),
-    "notify",
-    "--event",
-    eventName,
-    "--adapter",
-    "claude"
-  ].join(" ");
-
-  const content = [
-    "#!/usr/bin/env bash",
-    "set -euo pipefail",
-    "",
-    `${command} >/dev/null 2>&1 || true`
-  ].join("\n");
+  const commandArgs = `notify --event ${eventName} --adapter claude`;
+  const content = ["#!/usr/bin/env bash", "set -euo pipefail", ""]
+    .concat(buildTasktoneNotifyScript(tasktoneInvocation, commandArgs))
+    .join("\n");
 
   fs.writeFileSync(scriptPath, `${content}\n`, { mode: 0o755 });
   fs.chmodSync(scriptPath, 0o755);

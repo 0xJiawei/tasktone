@@ -104,6 +104,12 @@ tasktone test
 tasktone status
 ```
 
+发布前检查：
+
+```bash
+npm run release:check
+```
+
 ## 配置文件
 
 路径：`~/.tasktone/config.json`
@@ -151,6 +157,12 @@ src/
 - 无云服务
 - 无数据库
 - Codex `attention_required` 目前是 best-effort（受上游 notify 能力影响）
+
+## CI 与发布
+
+- CI：GitHub Actions 会自动运行 `npm test` 冒烟检查
+- 发布流程：见 [RELEASING.md](./RELEASING.md)
+- 变更记录：见 [CHANGELOG.md](./CHANGELOG.md)
 
 ## 许可证
 

@@ -6,7 +6,9 @@
     "tasktone": "bin/tasktone.js"
   },
   "scripts": {
-    "test": "node ./bin/tasktone.js test"
+    "test": "bash ./scripts/smoke.sh",
+    "release:check": "npm test && npm pack --dry-run --cache ./.npm-cache",
+    "release:publish": "npm publish --access public --cache ./.npm-cache"
   },
   "keywords": [
     "cli",
