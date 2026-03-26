@@ -1,0 +1,19 @@
+{
+  "name": "tasktone",
+  "version": "0.1.0",
+  "description": "Lightweight notification layer for AI coding agents.",
+  "bin": {
+    "tasktone": "bin/tasktone.js"
+  },
+  "scripts": {
+    "test": "node ./bin/tasktone.js test"
+  },
+  "keywords": [
+    "cli",
+    "notifications",
+    "codex",
+    "claude",
+    "developer-tools"
+  ],
+  "license": "MIT"
+}

@@ -1,0 +1,9 @@
+{
+  "sound": {
+    "attention_required": "sounds/attention.wav",
+    "task_completed": "sounds/done.wav",
+    "task_failed": "sounds/error.wav"
+  },
+  "desktopNotification": true,
+  "debounceMs": 3000
+}
