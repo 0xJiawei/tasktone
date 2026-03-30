@@ -1,6 +1,6 @@
 {
   "name": "tasktone",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Lightweight notification layer for AI coding agents.",
   "bin": {
     "tasktone": "bin/tasktone.js"
