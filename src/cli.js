@@ -121,14 +121,16 @@ function resolveEventFromAdapter(parsed) {
 
     const candidate = parsed.rawJson || parsed.positional[0];
     if (!candidate) {
-      return null;
+      // Codex notify payload schema is not stable yet.
+      // If hook fires without a payload, prefer alerting the user.
+      return "attention_required";
     }
 
     try {
       const payload = JSON.parse(candidate);
-      return mapCodexSignal(payload);
+      return mapCodexSignal(payload) || "attention_required";
     } catch (_error) {
-      return null;
+      return "attention_required";
     }
   }
 
