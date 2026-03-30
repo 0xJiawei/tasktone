@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Codex signal mapping is now more tolerant to schema changes and unknown notify payloads:
+  - still maps explicit failures to `task_failed`
+  - best-effort maps unknown payload objects to `attention_required`
+
 ## [0.1.2] - 2026-03-30
 
 ### Added

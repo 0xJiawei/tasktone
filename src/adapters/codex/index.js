@@ -18,12 +18,32 @@ function mapCodexSignal(rawSignal) {
     return "attention_required";
   }
 
-  if (
-    rawSignal.type &&
-    typeof rawSignal.type === "string" &&
-    /(error|fail|failed)/i.test(rawSignal.type)
-  ) {
+  const signalText = [
+    rawSignal.type,
+    rawSignal.event,
+    rawSignal.name,
+    rawSignal.status,
+    rawSignal.title,
+    rawSignal.message
+  ]
+    .filter((value) => typeof value === "string")
+    .join(" ");
+
+  if (/(error|fail|failed|exception|panic)/i.test(signalText)) {
     return "task_failed";
+  }
+
+  if (
+    /(notify|notification|attention|required|input|required|confirm|approval|agent-turn-complete)/i.test(
+      signalText
+    )
+  ) {
+    return "attention_required";
+  }
+
+  // Best-effort fallback for Codex notify payloads that do not expose a stable schema yet.
+  if (Object.keys(rawSignal).length > 0) {
+    return "attention_required";
   }
 
   return null;
